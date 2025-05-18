@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <div class="max-w-3xl mx-auto mt-10 p-6 bg-white rounded-lg shadow-md">
+        <h2 class="text-2xl font-semibold text-gray-800 mb-4">
+            Class Sessions for {{ course.course_name }} ({{ course.course_code }})
+        </h2>
+
+        <form method="GET" class="mb-6 flex flex-col md:flex-row md:items-center gap-3">
+            <label class="text-sm text-gray-700">
+                Filter by Date:
+                <input type="date" name="date" value="{{ query_date }}"
+                       class="ml-2 p-2 border border-gray-300 rounded-md">
+            </label>
+            <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm">
+                Filter
+            </button>
+        </form>
+
+        {% if sessions %}
+            <ul class="space-y-3">
+                {% for session in sessions %}
+                    <li class="bg-gray-100 p-4 rounded-md shadow-sm flex justify-between items-center">
+                        <p class="text-gray-800 font-medium">Session on: {{ session.date }}</p>
+                        <a href="{% url 'attendance:session-summary' session.id %}"
+                           class="text-blue-600 text-sm hover:underline">View Attendance</a>
+                        <a href="{% url 'attendance:session-download' session.id %}"
+                           class="text-blue-600 text-sm hover:underline">Download</a>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="text-gray-600">No sessions found for this date.</p>
+        {% endif %}
+
+        <a href="{% url 'attendance:lecturer_page' %}" class="mt-6 inline-block text-sm text-blue-600 hover:underline">
+            ← Back to your dashboard
+        </a>
+    </div>
+{% endblock %}

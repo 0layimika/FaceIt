@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+
+{% block title %}Sign Up{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-center min-h-screen bg-gray-100">
+    <div class="w-full max-w-md bg-white p-8 rounded-lg shadow-lg">
+        <h1 class="text-3xl font-semibold text-center mb-6 text-gray-800">Sign In</h1>
+        {% if error %}
+        {{ error }}
+        {% endif %}
+        <form id="signup-form" class="space-y-6" method="post" action="">
+            {% csrf_token %}
+            <div>
+                <label for="email" class="block text-sm font-medium text-gray-700">email/matric number</label>
+                <input
+                    type="text"
+                    id="email"
+                    name="email"
+                    placeholder="Lecturer@covenantuniversity.edu.ng"
+                    class="mt-1 block w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    required>
+            </div>
+            <div>
+                <label for="password" class="block text-sm font-medium text-gray-700">Password</label>
+                <input
+                    type="password"
+                    id="password"
+                    name="password"
+                    placeholder="At least 8 characters"
+                    class="mt-1 block w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    required>
+            </div>
+            <button
+                type="submit"
+                class="w-full py-3 text-white bg-blue-600 rounded-lg font-bold text-lg hover:bg-blue-700 transition duration-300">
+                Login
+            </button>
+        </form>
+        <p class="text-center mt-4 text-sm text-gray-600">
+            Not registered?
+            <a href="{% url 'attendance:register' %}" class="text-blue-600 hover:underline">Register!</a>
+        </p>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,68 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}FaceIt{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'css/output.css' %}">
+</head>
+<body class="flex flex-col min-h-screen">
+
+    <!-- Navbar -->
+    <nav class="bg-blue-600 text-white shadow-lg">
+        <div class="container mx-auto px-4 py-4 flex justify-between items-center">
+            <!-- Logo -->
+            <a href="" class="text-2xl font-bold">FaceIt</a>
+
+            <!-- Links -->
+            <ul class="hidden md:flex space-x-6">
+                <li><a href="{% url 'attendance:student_page' %}" class="hover:text-gray-300">Student</a></li>
+                <li><a href="{% url 'attendance:lecturer_page' %}" class="hover:text-gray-300">Lecturer</a></li>
+                {% if request.session.lecturer_id or request.session.student_id %}
+                <li><a href="{% url 'attendance:logout' %}" class="hover:text-gray-300">Logout</a></li>
+                {% endif %}
+            </ul>
+
+            <!-- Mobile Menu Button -->
+            <button id="menu-btn" class="md:hidden focus:outline-none">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                </svg>
+            </button>
+        </div>
+
+        <!-- Mobile Menu -->
+        <ul id="menu" class="hidden md:hidden bg-blue-700 space-y-2 py-4">
+            <li><a href="{% url 'attendance:student_page' %}" class="hover:text-gray-300">Student</a></li>
+                <li><a href="{% url 'attendance:lecturer_page' %}" class="hover:text-gray-300">Lecturer</a></li>
+                {% if request.session.lecturer_id or request.session.student_id %}
+                <li><a href="{% url 'attendance:logout' %}" class="hover:text-gray-300">Logout</a></li>
+                {% endif %}
+        </ul>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="flex-grow container mx-auto px-4 py-8">
+        {% block content %}
+
+        {% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-800 text-white py-4">
+        <div class="container mx-auto text-center">
+            <p>&copy; 2024 FaceIt. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script>
+        // Mobile menu toggle
+        const menuBtn = document.getElementById('menu-btn');
+        const menu = document.getElementById('menu');
+        menuBtn.addEventListener('click', () => {
+            menu.classList.toggle('hidden');
+        });
+    </script>
+</body>
+</html>

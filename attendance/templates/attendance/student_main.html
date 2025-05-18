@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Student Dashboard - FaceIt{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto py-10 px-6">
+    <!-- Welcome Card -->
+    <div class="bg-white rounded-xl shadow-md p-8 mb-8 border border-gray-200">
+        <h1 class="text-3xl font-bold text-blue-800 mb-4">Welcome, {{ student.name }}</h1>
+        <div class="grid md:grid-cols-2 gap-4 text-gray-700 text-sm">
+            <p><span class="font-semibold">Email:</span> {{ student.email }}</p>
+            <p><span class="font-semibold">Matric Number:</span> {{ student.matric_number }}</p>
+        </div>
+    </div>
+
+    <!-- Courses Card -->
+    <div class="bg-white rounded-xl shadow-md p-8 mb-8 border border-gray-200">
+        <h2 class="text-2xl font-semibold text-blue-700 mb-4">Registered Courses</h2>
+        {% if courses.all %}
+            <ul class="list-disc list-inside space-y-2 text-gray-800 text-sm">
+                {% for course in courses.all %}
+                    <li class="pl-2">{{ course.course_code }} - {{ course.course_name }}</li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="text-gray-500 mb-2">You haven't registered for any courses yet.</p>
+            <a href="{% url 'attendance:course_registration' %}" class="text-blue-600 hover:underline text-sm">
+                Register Courses →
+            </a>
+        {% endif %}
+    </div><br><br>
+
+    <!-- Attendance Summary Button -->
+    <div class="text-right">
+        <a href="{% url 'attendance:attendance-summary' %}"
+           class="inline-block bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-5 py-3 rounded-lg shadow">
+            View Attendance Summary
+        </a>
+    </div>
+</div>
+{% endblock %}
