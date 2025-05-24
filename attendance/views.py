@@ -518,7 +518,7 @@ def stop_attendance_session(request):
     return JsonResponse({
         'success': True,
         'message': 'Attendance session completed',
-        'redirect_url': f'/attendance/session/{session_id}/'  # Adjust URL pattern as needed
+        'redirect_url': f'/attendance/session/{session_id}'  # Adjust URL pattern as needed
     })
 
 @lecturer_login_required
