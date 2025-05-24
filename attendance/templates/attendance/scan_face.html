@@ -1,112 +1,371 @@
-{% load static %}
+<!-- attendance/templates/attendance/scan_face.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Scan Face</title>
-    <link rel="stylesheet" href="{% static 'css/styles.css' %}">
+    <title>Complete Registration - Face Scan</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f8f9fa;
+        }
+        
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 20px;
+        }
+        
+        .student-info {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        
+        .camera-container {
+            position: relative;
+            display: flex;
+            justify-content: center;
+            margin: 20px 0;
+            border: 3px solid #ddd;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        
+        #videoStream {
+            display: block;
+            width: 640px;
+            height: 480px;
+            object-fit: cover;
+        }
+        
+        .controls {
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        .btn {
+            padding: 12px 24px;
+            margin: 10px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: bold;
+        }
+        
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background-color: #0056b3;
+        }
+        
+        .btn-success {
+            background-color: #28a745;
+            color: white;
+        }
+        
+        .btn-success:hover {
+            background-color: #218838;
+        }
+        
+        .btn-warning {
+            background-color: #ffc107;
+            color: #212529;
+        }
+        
+        .btn-warning:hover {
+            background-color: #e0a800;
+        }
+        
+        .btn:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+        
+        .message {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 5px;
+            font-weight: bold;
+            text-align: center;
+        }
+        
+        .message.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .message.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .message.info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        
+        .instructions {
+            background-color: #e9ecef;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+            border-left: 4px solid #007bff;
+        }
+        
+        .instructions h3 {
+            margin-top: 0;
+            color: #495057;
+        }
+        
+        .step {
+            margin: 10px 0;
+            padding: 10px 0;
+        }
+        
+        .step-number {
+            display: inline-block;
+            width: 25px;
+            height: 25px;
+            background-color: #007bff;
+            color: white;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 25px;
+            margin-right: 10px;
+            font-weight: bold;
+        }
+        
+        .progress {
+            background-color: #e9ecef;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        
+        .progress-bar {
+            background-color: #007bff;
+            height: 20px;
+            border-radius: 5px;
+            transition: width 0.3s;
+            text-align: center;
+            line-height: 20px;
+            color: white;
+            font-size: 12px;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
-        <h1>Face Registration</h1>
-
-        <p>Please ensure your face is clearly visible in the camera. Press <strong>"C"</strong> to capture your face, or <strong>"Q"</strong> to quit the process.</p>
-
-        <!-- Display error messages if any -->
-        {% if error %}
-            <div class="error-message">
-                <p>{{ error }}</p>
-            </div>
-        {% endif %}
-
-        <!-- Instructions for using OpenCV -->
-        <div class="instructions">
-            <ul>
-                <li>Ensure you are in a well-lit environment.</li>
-                <li>Remove glasses or face coverings for better detection.</li>
-                <li>Position your face in the center of the frame.</li>
-            </ul>
+        <div class="header">
+            <h1>Complete Your Registration</h1>
+            <p>Step 2 of 2: Face Recognition Setup</p>
         </div>
-
-        <!-- Form for proceeding with the face scan -->
-        <form method="POST">
-            {% csrf_token %}
-            <button type="submit" class="btn btn-primary">Start Face Scan</button>
-        </form>
-
-        <!-- Return to registration -->
-        <div class="links">
-            <a href="">Go Back to Registration</a>
+        
+        <div class="student-info">
+            <h3>Student Information</h3>
+            <p><strong>Name:</strong> {{ student_name }}</p>
+            <p><strong>Matric Number:</strong> {{ matric_number }}</p>
+        </div>
+        
+        <div class="progress">
+            <div class="progress-bar" style="width: 50%">Step 2 of 2</div>
+        </div>
+        
+        <div class="instructions">
+            <h3>Face Capture Instructions</h3>
+            <div class="step">
+                <span class="step-number">1</span>
+                Click "Start Camera" to activate your webcam
+            </div>
+            <div class="step">
+                <span class="step-number">2</span>
+                Position your face clearly in the camera view
+            </div>
+            <div class="step">
+                <span class="step-number">3</span>
+                Ensure good lighting and look directly at the camera
+            </div>
+            <div class="step">
+                <span class="step-number">4</span>
+                When you see a green rectangle around your face, click "Capture Face"
+            </div>
+            <div class="step">
+                <span class="step-number">5</span>
+                Complete your registration by clicking "Finish Registration"
+            </div>
+        </div>
+        
+        <div class="camera-container">
+            <img id="videoStream" src="" alt="Camera feed will appear here" style="display: none;">
+            <div id="cameraPlaceholder" style="width: 640px; height: 480px; background-color: #333; display: flex; align-items: center; justify-content: center; color: white; font-size: 18px; flex-direction: column;">
+                <div style="font-size: 48px; margin-bottom: 20px;">📷</div>
+                <div>Camera is not active</div>
+                <div style="font-size: 14px; margin-top: 10px;">Click "Start Camera" to begin</div>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <button id="startCamera" class="btn btn-primary">📹 Start Camera</button>
+            <button id="captureBtn" class="btn btn-success" disabled>📸 Capture Face</button>
+            <button id="stopCamera" class="btn btn-warning" disabled>⏹️ Stop Camera</button>
+        </div>
+        
+        <div id="message"></div>
+        
+        <div id="registrationSection" style="display: none; text-align: center; padding: 20px; background-color: #f8f9fa; border-radius: 5px; margin-top: 20px;">
+            <h3>✅ Face Captured Successfully!</h3>
+            <p>Your face has been captured and processed. Click below to complete your registration.</p>
+            <button id="completeRegistration" class="btn btn-success" style="font-size: 18px; padding: 15px 30px;">
+                🎓 Finish Registration
+            </button>
+        </div>
+        
+        <div style="text-align: center; margin-top: 30px;">
+            <a href="{% url 'attendance:register' %}" class="btn" style="background-color: #6c757d; color: white; text-decoration: none;">
+                ← Back to Registration Form
+            </a>
         </div>
     </div>
+
+    <script>
+        const startCameraBtn = document.getElementById('startCamera');
+        const captureBtn = document.getElementById('captureBtn');
+        const stopCameraBtn = document.getElementById('stopCamera');
+        const videoStream = document.getElementById('videoStream');
+        const cameraPlaceholder = document.getElementById('cameraPlaceholder');
+        const messageDiv = document.getElementById('message');
+        const registrationSection = document.getElementById('registrationSection');
+        const completeRegistrationBtn = document.getElementById('completeRegistration');
+
+        function showMessage(text, type = 'info') {
+            messageDiv.innerHTML = `<div class="message ${type}">${text}</div>`;
+        }
+
+        function clearMessage() {
+            messageDiv.innerHTML = '';
+        }
+
+        startCameraBtn.addEventListener('click', function() {
+            videoStream.src = '{% url "attendance:video_stream" %}';
+            videoStream.style.display = 'block';
+            cameraPlaceholder.style.display = 'none';
+            
+            startCameraBtn.disabled = true;
+            captureBtn.disabled = false;
+            stopCameraBtn.disabled = false;
+            
+            showMessage('📹 Camera started. Position your face in the view and wait for the green rectangle.', 'info');
+        });
+
+        captureBtn.addEventListener('click', function() {
+            captureBtn.disabled = true;
+            showMessage('📸 Capturing face...', 'info');
+            
+            fetch('{% url "attendance:capture_face_embedding" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showMessage('✅ ' + data.message, 'success');
+                    registrationSection.style.display = 'block';
+                    
+                    // Stop camera after successful capture
+                    stopCameraBtn.click();
+                } else {
+                    showMessage('❌ ' + data.message, 'error');
+                    captureBtn.disabled = false;
+                }
+            })
+            .catch(error => {
+                showMessage('❌ Error capturing face: ' + error.message, 'error');
+                captureBtn.disabled = false;
+            });
+        });
+
+        stopCameraBtn.addEventListener('click', function() {
+            fetch('{% url "attendance:stop_camera" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+            })
+            .then(response => response.json())
+            .then(data => {
+                videoStream.style.display = 'none';
+                cameraPlaceholder.style.display = 'flex';
+                videoStream.src = '';
+                
+                startCameraBtn.disabled = false;
+                captureBtn.disabled = true;
+                stopCameraBtn.disabled = true;
+                
+                showMessage('⏹️ Camera stopped.', 'info');
+            });
+        });
+
+        completeRegistrationBtn.addEventListener('click', function() {
+            completeRegistrationBtn.disabled = true;
+            completeRegistrationBtn.innerHTML = '⏳ Completing Registration...';
+            
+            fetch('{% url "attendance:complete_registration" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showMessage('🎉 ' + data.message, 'success');
+                    setTimeout(() => {
+                        window.location.href = data.redirect_url;
+                    }, 2000);
+                } else {
+                    showMessage('❌ ' + data.message, 'error');
+                    completeRegistrationBtn.disabled = false;
+                    completeRegistrationBtn.innerHTML = '🎓 Finish Registration';
+                }
+            })
+            .catch(error => {
+                showMessage('❌ Registration failed: ' + error.message, 'error');
+                completeRegistrationBtn.disabled = false;
+                completeRegistrationBtn.innerHTML = '🎓 Finish Registration';
+            });
+        });
+
+        // Auto-stop camera when page is closed/refreshed
+        window.addEventListener('beforeunload', function() {
+            fetch('{% url "attendance:stop_camera" %}', {method: 'POST'});
+        });
+    </script>
 </body>
 </html>
-<style>
-   body {
-    font-family: Arial, sans-serif;
-    background-color: #f4f4f9;
-    margin: 0;
-    padding: 0;
-}
-
-.container {
-    max-width: 600px;
-    margin: 50px auto;
-    padding: 20px;
-    background: white;
-    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
-    border-radius: 10px;
-    text-align: center;
-}
-
-h1 {
-    color: #333;
-}
-
-.instructions {
-    margin: 20px 0;
-    text-align: left;
-}
-
-.instructions ul {
-    list-style: disc;
-    padding-left: 20px;
-}
-
-.error-message {
-    background-color: #ffe6e6;
-    color: #d9534f;
-    padding: 10px;
-    margin-bottom: 20px;
-    border-radius: 5px;
-}
-
-.btn {
-    background-color: #007bff;
-    color: white;
-    padding: 10px 20px;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    font-size: 16px;
-}
-
-.btn:hover {
-    background-color: #0056b3;
-}
-
-.links {
-    margin-top: 20px;
-}
-
-.links a {
-    color: #007bff;
-    text-decoration: none;
-}
-
-.links a:hover {
-    text-decoration: underline;
-}
-
-</style>
