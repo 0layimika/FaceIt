@@ -1,9 +1,7 @@
 from datetime import date, datetime
-
 from django.http import HttpResponse
 from django.shortcuts import render, get_object_or_404, redirect
 from openpyxl.styles import Font
-
 from .models import *
 from .forms import *
 import bcrypt
@@ -12,7 +10,10 @@ import cv2
 from .decorators import lecturer_login_required, student_login_required
 import numpy as np
 import openpyxl
-
+import json
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
+from django.http import StreamingHttpResponse, JsonResponse
 
 embed = FaceNet()
 hog = cv2.HOGDescriptor()
@@ -20,49 +21,136 @@ hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
 
 def cosine_similarity(a,b):
     return np.dot(a,b) / (np.linalg.norm(a)*np.linalg.norm(b))
-def get_embedding():
-    camera = cv2.VideoCapture(0)
-    print("Press 'C' to capture and 'Q' to quit")
-    embeddings = None
-    face_detected = False  # Flag to ensure face is captured only once
+camera_active = False
+captured_embedding = None
 
-    while True:
-        ret, frame = camera.read()
+class VideoCamera:
+    def __init__(self):
+        self.video = cv2.VideoCapture(0)
+        self.video.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        self.video.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    
+    def __del__(self):
+        self.video.release()
+    
+    def get_frame(self):
+        ret, frame = self.video.read()
         if not ret:
-            break
-
-        # Convert frame to grayscale (necessary for HOG+SVM)
+            return None
+            
+        # Convert frame to grayscale for face detection
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
+        
         # Detect faces using HOG+SVM
         faces, _ = hog.detectMultiScale(gray, winStride=(8, 8), padding=(8, 8), scale=1.05)
-
+        
         # Draw rectangles around detected faces
         for (x, y, w, h) in faces:
             cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            
+            # Add instruction text
+            cv2.putText(frame, "Face Detected - Click Capture", 
+                       (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+        
+        # Add general instruction text
+        if len(faces) == 0:
+            cv2.putText(frame, "Position your face in the camera", 
+                       (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+        
+        # Encode frame to JPEG
+        ret, jpeg = cv2.imencode('.jpg', frame)
+        return jpeg.tobytes()
 
-            # Capture face embedding if a face is detected and not already captured
-            if not face_detected:
-                face_region = frame[y:y + h, x:x + w]
-                face_embedding = embed.embeddings([face_region])[0]
-                embeddings = face_embedding
-                face_detected = True  # Set the flag to true to prevent re-capturing the face
-                print("Face captured")
-                break  # Once the face is captured, exit the loop
+def gen_frames():
+    camera = VideoCamera()
+    while camera_active:
+        frame = camera.get_frame()
+        if frame is not None:
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
-        # Show the frame with the face bounding box around the detected face
-        cv2.imshow("Register Face", frame)
+def video_stream(request):
+    global camera_active
+    camera_active = True
+    return StreamingHttpResponse(gen_frames(),
+                               content_type='multipart/x-mixed-replace; boundary=frame')
 
-        # Check for key press to capture the face or quit
-        key = cv2.waitKey(1) & 0xFF
-        if key == ord('c') and embeddings is not None:
-            break  # If a face is captured and embeddings extracted, break
-        elif key == ord('q'):
-            break  # Exit if 'Q' is pressed
+@csrf_exempt
+@require_http_methods(["POST"])
+def capture_face_embedding(request):
+    """Capture face and generate embedding for registration"""
+    global captured_embedding
+    
+    try:
+        # Use your existing get_embedding logic but simplified
+        camera = cv2.VideoCapture(0)
+        embeddings = None
+        max_attempts = 30
+        attempts = 0
+        best_face_area = 0
+        
+        while attempts < max_attempts and embeddings is None:
+            ret, frame = camera.read()
+            if not ret:
+                break
+                
+            attempts += 1
+            
+            # Convert frame to grayscale
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            
+            # Detect faces using HOG+SVM
+            faces, _ = hog.detectMultiScale(gray, winStride=(8, 8), padding=(8, 8), scale=1.05)
+            
+            # Process the largest face detected
+            for (x, y, w, h) in faces:
+                face_area = w * h
+                
+                if face_area > best_face_area:
+                    try:
+                        face_region = frame[y:y + h, x:x + w]
+                        
+                        # Ensure face region is valid and reasonably sized
+                        if face_region.size > 0 and w > 50 and h > 50:
+                            face_embedding = embed.embeddings([face_region])[0]
+                            embeddings = face_embedding
+                            best_face_area = face_area
+                            break
+                            
+                    except Exception as e:
+                        print(f"Error processing face region: {e}")
+                        continue
+            
+            if embeddings is not None:
+                break
+                
+            import time
+            time.sleep(0.05)
+        
+        camera.release()
+        
+        if embeddings is not None:
+            captured_embedding = embeddings
+            return JsonResponse({
+                'success': True, 
+                'message': 'Face captured successfully!',
+                'embedding_length': len(embeddings)
+            })
+        else:
+            return JsonResponse({
+                'success': False, 
+                'message': 'No suitable face detected. Please try again with better lighting.'
+            })
+        
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': f'Error: {str(e)}'})
 
-    camera.release()
-    cv2.destroyAllWindows()
-    return embeddings
+@csrf_exempt
+def stop_camera(request):
+    """Stop the camera stream"""
+    global camera_active
+    camera_active = False
+    return JsonResponse({'success': True, 'message': 'Camera stopped'})
 
 def register_student(request):
     if request.method == "POST":
@@ -74,9 +162,9 @@ def register_student(request):
                 password = request.POST["password"]
                 encrypted = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
                 request.session['data'] = {
-                    "matric_number":request.POST["matric_number"],
-                    "name" : request.POST["name"],
-                    "email" : request.POST["email"],
+                    "matric_number": request.POST["matric_number"],
+                    "name": request.POST["name"],
+                    "email": request.POST["email"],
                     "password": encrypted
                 }
                 return redirect('attendance:scan_face')
@@ -84,6 +172,63 @@ def register_student(request):
     return render(request, 'attendance/home.html')
 
 def scan_face(request):
+    """Display the face scanning page for registration"""
+    if 'data' not in request.session:
+        return redirect('attendance:register')
+    
+    return render(request, 'attendance/scan_face.html', {
+        'student_name': request.session['data']['name'],
+        'matric_number': request.session['data']['matric_number']
+    })
+
+@csrf_exempt
+def complete_registration(request):
+    """Complete student registration after face capture"""
+    global captured_embedding, camera_active
+    
+    if request.method == "POST":
+        if 'data' not in request.session:
+            return JsonResponse({'success': False, 'message': 'Session expired. Please start registration again.'})
+        
+        if captured_embedding is None:
+            return JsonResponse({'success': False, 'message': 'No face embedding captured. Please capture your face first.'})
+        
+        try:
+            # Create student with the captured embedding
+            student_data = request.session['data']
+            
+            student = Student.objects.create(
+                matric_number=student_data['matric_number'],
+                name=student_data['name'],
+                email=student_data['email'],
+                password=student_data['password'],
+                face_embedding=captured_embedding.tolist()  # Convert numpy array to list for storage
+            )
+            
+            # Clean up
+            camera_active = False
+            captured_embedding = None
+            del request.session['data']
+            
+            return JsonResponse({
+                'success': True, 
+                'message': f'Registration completed successfully for {student.name}!',
+                'redirect_url': '/attendance/'  # Adjust to your home URL
+            })
+            
+        except Exception as e:
+            return JsonResponse({'success': False, 'message': f'Registration failed: {str(e)}'})
+    
+    return JsonResponse({'success': False, 'message': 'Invalid request method'})
+
+def get_embedding():
+    """Legacy function - now handled by the web interface"""
+    global captured_embedding
+    if captured_embedding is not None:
+        embedding = captured_embedding
+        captured_embedding = None  # Reset after use
+        return embedding
+    return None
     if request.method == "POST":
         student_data = request.session.get('data')
         if not student_data:
@@ -189,8 +334,7 @@ def register_courses(request):
     else:
         return render(request, "attendance/course_registration.html",{"form":form})
 
-@lecturer_login_required
-def start_class_session(request, id):
+
     if request.method == "POST":
         course = get_object_or_404(Course, pk=id)
         lecturer = Lecturer.objects.get(pk=request.session['lecturer_id'])
@@ -210,77 +354,172 @@ def logout(request):
     request.session.flush()
     return redirect('attendance:student_page')
 
-def take_attendance(course,lecturer, enrolled_students):
-    session = ClassSession.objects.create(course=course, lecturer=lecturer)
-    camera = cv2.VideoCapture(0)
-    marked_students = set()
+attendance_camera_active = False
+current_session = None
+marked_students = set()
+enrolled_students_list = []
 
-
-    print("Press 'Q' to quit attendance session.")
-
-    while True:
-        ret, frame = camera.read()
+class AttendanceCamera:
+    def __init__(self):
+        self.video = cv2.VideoCapture(0)
+        self.video.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        self.video.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    
+    def __del__(self):
+        self.video.release()
+    
+    def get_frame(self):
+        global marked_students, enrolled_students_list
+        
+        ret, frame = self.video.read()
         if not ret:
-            break
-
+            return None
+            
+        # Convert frame to grayscale for face detection
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        
+        # Detect faces using HOG+SVM
         faces, _ = hog.detectMultiScale(gray, winStride=(8, 8), padding=(8, 8), scale=1.05)
-
+        
+        # Process each detected face
         for (x, y, w, h) in faces:
             face_region = frame[y:y + h, x:x + w]
-            face_region = cv2.resize(face_region, (160, 160))  # Ensure consistent size for embedding
-            detected_embedding = embed.embeddings([face_region])[0]
+            face_region = cv2.resize(face_region, (160, 160))  # Ensure consistent size
+            
+            try:
+                detected_embedding = embed.embeddings([face_region])[0]
+                best_match = None
+                highest_similarity = 0
+                
+                # Compare with enrolled students
+                for student in enrolled_students_list:
+                    if student.face_embedding is None:
+                        continue
+                        
+                    stored_embedding = np.array(student.face_embedding)
+                    similarity = cosine_similarity(detected_embedding, stored_embedding)
+                    
+                    if similarity > 0.7 and similarity > highest_similarity:
+                        best_match = student
+                        highest_similarity = similarity
+                
+                # Mark attendance if match found and not already marked
+                if best_match and best_match.id not in marked_students:
+                    marked_students.add(best_match.id)
+                    
+                    # Create attendance record
+                    Attendance.objects.get_or_create(
+                        student=best_match,
+                        course=current_session.course,
+                        date=date.today(),
+                        defaults={"status": True}
+                    )
+                    
+                    print(f"Marked: {best_match.name} (Similarity: {highest_similarity:.2f})")
+                
+                # Draw bounding box and label
+                if best_match:
+                    if best_match.id in marked_students:
+                        # Green for marked students
+                        color = (0, 255, 0)
+                        label = f"{best_match.name} - MARKED ({highest_similarity:.2f})"
+                    else:
+                        # Yellow for recognized but not yet marked
+                        color = (0, 255, 255)
+                        label = f"{best_match.name} ({highest_similarity:.2f})"
+                else:
+                    # Red for unrecognized faces
+                    color = (0, 0, 255)
+                    label = "Unknown"
+                
+                cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
+                cv2.putText(frame, label, (x, y - 10),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+                           
+            except Exception as e:
+                print(f"Error processing face: {e}")
+                # Draw red box for processing errors
+                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 255), 2)
+        
+        # Add session info overlay
+        cv2.putText(frame, f"Attendance Session Active", (10, 30),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        cv2.putText(frame, f"Students Marked: {len(marked_students)}", (10, 60),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        
+        # Encode frame to JPEG
+        ret, jpeg = cv2.imencode('.jpg', frame)
+        return jpeg.tobytes()
 
-            best_match = None
-            highest_similarity = 0
+def gen_attendance_frames():
+    camera = AttendanceCamera()
+    while attendance_camera_active:
+        frame = camera.get_frame()
+        if frame is not None:
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
-            for student in enrolled_students:
-                if student.face_embedding is None:
-                    continue
+def attendance_video_stream(request):
+    global attendance_camera_active
+    attendance_camera_active = True
+    return StreamingHttpResponse(gen_attendance_frames(),
+                               content_type='multipart/x-mixed-replace; boundary=frame')
 
-                stored_embedding = np.array(student.face_embedding)
-                similarity = cosine_similarity(detected_embedding, stored_embedding)
+@lecturer_login_required
+def start_class_session(request, id):
+    if request.method == "POST":
+        course = get_object_or_404(Course, pk=id)
+        lecturer = Lecturer.objects.get(pk=request.session['lecturer_id'])
+        enrolled_students = course.students.all()
+        
+        if not course.lecturers.filter(id=lecturer.id).exists():
+            return redirect('attendance:realmain')  # Redirect if unauthorized
+        
+        # Start the attendance session
+        return start_attendance_session(request, course, lecturer, enrolled_students)
+    
+    return redirect('attendance:realmain')
 
-                if similarity > 0.7 and similarity > highest_similarity:
-                    best_match = student
-                    highest_similarity = similarity
+def start_attendance_session(request, course, lecturer, enrolled_students):
+    global current_session, marked_students, enrolled_students_list
+    
+    # Create class session
+    current_session = ClassSession.objects.create(course=course, lecturer=lecturer)
+    marked_students = set()
+    enrolled_students_list = list(enrolled_students)
+    
+    # Render the attendance page
+    return render(request, 'attendance/take_attendance.html', {
+        'course': course,
+        'lecturer': lecturer,
+        'enrolled_students': enrolled_students,
+        'session_id': current_session.id
+    })
 
-            if best_match and best_match.id not in marked_students:
-                marked_students.add(best_match.id)
-                print(f"Matched: {best_match.name} (Similarity: {highest_similarity:.2f})")
-                Attendance.objects.get_or_create(
-                    student=best_match,
-                    course=course,
-                    date=date.today(),
-                    defaults={"status": True}
-                )
-
-                cv2.putText(frame, f"{best_match.name} ({highest_similarity:.2f})", (x, y - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-
-            # Draw the bounding box
-            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-
-        cv2.imshow("Attendance", frame)
-        if cv2.waitKey(1) & 0xFF == ord("q"):
-            break
-
-    camera.release()
-    cv2.destroyAllWindows()
-    summary = []
-    for student in enrolled_students:
-        attendance_record = Attendance.objects.filter(
-            student=student,
-            course=course,
-            date=date.today()
-        ).first()
-        summary.append({
-            'name': student.name,
-            "mat":student.matric_number,
-            'status': 1 if attendance_record and attendance_record.status else 0
-        })
-
-    return summary
+@csrf_exempt
+@require_http_methods(["POST"])
+def stop_attendance_session(request):
+    """Stop the attendance session and redirect to summary"""
+    global attendance_camera_active, current_session, marked_students, enrolled_students_list
+    
+    attendance_camera_active = False
+    
+    if current_session is None:
+        return JsonResponse({'success': False, 'message': 'No active session'})
+    
+    # Store session ID for redirect
+    session_id = current_session.id
+    
+    # Reset global variables
+    current_session = None
+    marked_students = set()
+    enrolled_students_list = []
+    
+    return JsonResponse({
+        'success': True,
+        'message': 'Attendance session completed',
+        'redirect_url': f'/attendance/session/{session_id}/'  # Adjust URL pattern as needed
+    })
 
 @lecturer_login_required
 def view_course_sessions(request, course_id):
