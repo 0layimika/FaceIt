@@ -341,8 +341,6 @@ def register_courses(request):
         return render(request, "attendance/course_registration.html", {"form": form})
 
 
-
-
 def logout(request):
     request.session.flush()
     return redirect('attendance:student_page')
@@ -394,7 +392,7 @@ class AttendanceCamera:
                     stored_embedding = np.array(student.face_embedding)
                     similarity = cosine_similarity(detected_embedding, stored_embedding)
 
-                    if similarity > 0.7 and similarity > highest_similarity:
+                    if similarity >= 0.65 and similarity > highest_similarity:
                         best_match = student
                         highest_similarity = similarity
 
@@ -402,12 +400,16 @@ class AttendanceCamera:
                 if best_match and best_match.id not in marked_students:
                     marked_students.add(best_match.id)
 
-                    Attendance.objects.get_or_create(
+                    attendance, created = Attendance.objects.get_or_create(
                         student=best_match,
                         course=current_session.course,
-                        date=date.today(),
+                        session=current_session,
                         defaults={"status": True}
                     )
+
+                    if not created and not attendance.status:
+                        attendance.status = True
+                        attendance.save()
                     print(f"Marked: {best_match.name} (Similarity: {highest_similarity:.2f})")
 
                 # Draw bounding box and label
@@ -480,6 +482,7 @@ def start_attendance_session(request, course, lecturer, enrolled_students):
     current_session = ClassSession.objects.create(course=course, lecturer=lecturer)
     marked_students = set()
     enrolled_students_list = list(enrolled_students)
+    print(enrolled_students_list)
 
     # Render the attendance page
     return render(request, 'attendance/take_attendance.html', {
@@ -493,13 +496,26 @@ def start_attendance_session(request, course, lecturer, enrolled_students):
 @csrf_exempt
 @require_http_methods(["POST"])
 def stop_attendance_session(request):
-    """Stop the attendance session and redirect to summary"""
     global attendance_camera_active, current_session, marked_students, enrolled_students_list
 
     attendance_camera_active = False
-
+    print(marked_students)
     if current_session is None:
         return JsonResponse({'success': False, 'message': 'No active session'})
+
+    # Mark absent students
+    for student in enrolled_students_list:
+        if student.id not in marked_students:
+            attendance, created = Attendance.objects.get_or_create(
+                student=student,
+                course=current_session.course,
+                session=current_session,
+                defaults={"status": False}
+            )
+
+            if not created and attendance.status != False:
+                attendance.status = False
+                attendance.save()
 
     # Store session ID for redirect
     session_id = current_session.id
@@ -512,7 +528,45 @@ def stop_attendance_session(request):
     return JsonResponse({
         'success': True,
         'message': 'Attendance session completed',
-        'redirect_url': f'/attendance/session/{session_id}'  # Adjust URL pattern as needed
+        'redirect_url': f'/attendance/session/{session_id}'
+    })
+
+
+@lecturer_login_required
+def session_attendance_summary(request, session_id):
+    session = get_object_or_404(ClassSession, pk=session_id)
+    lecturer = Lecturer.objects.get(pk=request.session['lecturer_id'])
+
+    if session.lecturer != lecturer:
+        return redirect('attendance:lecturer_page')
+
+    # Get enrolled students for the course at that time
+    enrolled_students = session.course.students.all()
+
+    # Build summary list just like in live session
+    summary = []
+    for student in enrolled_students:
+        attendance_record = Attendance.objects.filter(
+            student=student,
+            course=session.course,
+            session=session
+        ).first()
+        if attendance_record is not None:
+            status = 1 if attendance_record.status else 0
+        else:
+            status = 0
+        # print (f"{student.name} - Attendance Record: {attendance_record} - Status: {getattr(attendance_record, 'status', 'N/A')}")
+        summary.append({
+            'name': student.name,
+            'mat': student.matric_number,
+            'status': status
+        })
+    print(summary)
+
+    return render(request, "attendance/summary.html", {
+        "course": session.course,
+        "summary": summary,
+        "date": session.date
     })
 
 
@@ -538,38 +592,6 @@ def view_course_sessions(request, course_id):
         'course': course,
         'sessions': sessions,
         'query_date': query_date or ''
-    })
-
-
-@lecturer_login_required
-def session_attendance_summary(request, session_id):
-    session = get_object_or_404(ClassSession, pk=session_id)
-    lecturer = Lecturer.objects.get(pk=request.session['lecturer_id'])
-
-    if session.lecturer != lecturer:
-        return redirect('attendance:lecturer_page')
-
-    # Get enrolled students for the course at that time
-    enrolled_students = session.course.students.all()
-
-    # Build summary list just like in live session
-    summary = []
-    for student in enrolled_students:
-        attendance_record = Attendance.objects.filter(
-            student=student,
-            course=session.course,
-            date=session.date
-        ).first()
-        summary.append({
-            'name': student.name,
-            'mat': student.matric_number,
-            'status': 1 if attendance_record and attendance_record.status else 0
-        })
-
-    return render(request, "attendance/summary.html", {
-        "course": session.course,
-        "summary": summary,
-        "date": session.date
     })
 
 

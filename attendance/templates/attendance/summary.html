@@ -26,7 +26,7 @@
           <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ student.name }}</td>
           <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ student.mat }}</td>
           <td class="px-6 py-4 whitespace-nowrap text-sm">
-            {% if student.status %}
+            {% if student.status == 1 %}
               <span class="text-green-600 font-semibold">1 (Present)</span>
             {% else %}
               <span class="text-red-600 font-semibold">0 (Absent)</span>

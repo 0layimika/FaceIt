@@ -42,14 +42,6 @@ class Course(models.Model):
     def __str__(self):
         return self.course_code
 
-class Attendance(models.Model):
-    course = models.ForeignKey('Course', on_delete=models.CASCADE, related_name='attendance_records')
-    student = models.ForeignKey('Student', on_delete=models.CASCADE, related_name='attendance_records')
-    date = models.DateField(auto_now_add=True)
-    status = models.BooleanField(default=False)
-
-    def __str__(self):
-        return f"{self.student.name} - {self.course.course_code}"
 
 class ClassSession(models.Model):
     course = models.ForeignKey('Course', on_delete=models.CASCADE, related_name='sessions')
@@ -58,3 +50,15 @@ class ClassSession(models.Model):
 
     def __str__(self):
         return f"{self.course.course_code} - {self.date}"
+
+class Attendance(models.Model):
+    course = models.ForeignKey('Course', on_delete=models.CASCADE, related_name='attendance_records')
+    student = models.ForeignKey('Student', on_delete=models.CASCADE, related_name='attendance_records')
+    session = models.ForeignKey(ClassSession, on_delete=models.CASCADE, null=True)
+    status = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"{self.student.name} - {self.course.course_code}"
+
+    class Meta:
+        unique_together = ('student', 'session')
